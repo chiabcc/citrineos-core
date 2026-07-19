@@ -13,7 +13,7 @@ import {
   Namespace,
   QuerySchema,
 } from '@citrineos/base';
-import { ChargingStation, Connector, Evse } from '@dal/layers/sequelize/index.js';
+import { Authorization, ChargingStation, Connector, Evse } from '@dal/layers/sequelize/index.js';
 import type { IProvisioningModuleApi } from './interface.js';
 import { ProvisioningModule } from './module.js';
 
@@ -41,6 +41,22 @@ const ListChargingStationsQuerySchema = QuerySchema('ListChargingStationsQuerySc
   { key: 'tenantId', type: 'number', required: true, defaultValue: '1' },
   { key: 'stationId', type: 'string' },
 ]);
+
+interface CreateAuthorizationRequest {
+  idToken: string;
+  idTokenType?: string;
+}
+
+const CreateAuthorizationRequestSchema = {
+  $id: 'CreateAuthorizationRequestSchema',
+  type: 'object',
+  properties: {
+    idToken: { type: 'string', minLength: 1, maxLength: 36 },
+    idTokenType: { type: 'string', default: 'ISO14443' },
+  },
+  required: ['idToken'],
+  additionalProperties: false,
+};
 
 const CreateChargingStationRequestSchema = {
   $id: 'CreateChargingStationRequestSchema',
@@ -139,6 +155,28 @@ export class ProvisioningDataApi
       this._logger.error(`Failed provisioning charging station ${stationId}`, error);
       return { success: false, payload: `Failed provisioning charging station ${stationId}` };
     }
+  }
+
+  /** Idempotent upsert of an idToken authorization (RemoteStart validates against this) */
+  @AsDataEndpoint(
+    Namespace.AuthorizationData,
+    HttpMethod.Post,
+    ProvisioningTenantQuerySchema,
+    CreateAuthorizationRequestSchema,
+  )
+  async createAuthorization(
+    request: FastifyRequest<{
+      Body: CreateAuthorizationRequest;
+      Querystring: TenantQuerystring;
+    }>,
+  ): Promise<IMessageConfirmation> {
+    const tenantId = request.query.tenantId;
+    const { idToken, idTokenType = 'ISO14443' } = request.body;
+    const [row] = await Authorization.findOrCreate({
+      where: { tenantId, idToken },
+      defaults: { tenantId, idToken, idTokenType, status: 'Accepted' },
+    });
+    return { success: true, payload: { id: row.id, idToken } };
   }
 
   @AsDataEndpoint(Namespace.ChargingStation, HttpMethod.Get, ListChargingStationsQuerySchema)
