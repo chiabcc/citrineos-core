@@ -150,6 +150,11 @@ export function createDockerConfig() {
         responses: [],
         requests: [],
       },
+      provisioning: {
+        endpointPrefix: 'provisioning',
+        responses: [],
+        requests: [],
+      },
       transactions: {
         endpointPrefix: '/transactions',
         costUpdatedInterval: 60,

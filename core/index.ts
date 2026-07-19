@@ -12,6 +12,7 @@ export * from '@modules/Configuration/src/index.js';
 export * from '@modules/EVDriver/src/index.js';
 export * from '@modules/Monitoring/src/index.js';
 export * from '@modules/OcppRouter/src/index.js';
+export * from '@modules/Provisioning/src/index.js';
 export * from '@modules/Reporting/src/index.js';
 export * from '@modules/SmartCharging/src/index.js';
 export * from '@modules/Tenant/src/index.js';

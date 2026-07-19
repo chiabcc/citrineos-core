@@ -30,6 +30,7 @@ export enum EventGroup {
   Configuration = 'configuration',
   EVDriver = 'evdriver',
   Monitoring = 'monitoring',
+  Provisioning = 'provisioning',
   Reporting = 'reporting',
   SmartCharging = 'smartcharging',
   Tenant = 'tenant',

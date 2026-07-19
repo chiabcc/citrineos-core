@@ -156,6 +156,15 @@ export const systemConfigInputSchema = z.object({
         responses: z.array(CallActionSchema),
       })
       .optional(),
+    provisioning: z
+      .object({
+        endpointPrefix: z.string().default(EventGroup.Provisioning).optional(),
+        host: z.string().default('localhost').optional(),
+        port: z.number().int().min(1).default(8081).optional(),
+        requests: z.array(CallActionSchema),
+        responses: z.array(CallActionSchema),
+      })
+      .optional(),
     tenant: z
       .object({
         endpointPrefix: z.string().default(EventGroup.Tenant).optional(),
@@ -452,6 +461,15 @@ export const systemConfigSchema = z
         responses: z.array(CallActionSchema),
       }),
       smartcharging: z
+        .object({
+          endpointPrefix: z.string(),
+          host: z.string().optional(),
+          port: z.number().int().min(1).optional(),
+          requests: z.array(CallActionSchema),
+          responses: z.array(CallActionSchema),
+        })
+        .optional(),
+      provisioning: z
         .object({
           endpointPrefix: z.string(),
           host: z.string().optional(),

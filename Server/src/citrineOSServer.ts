@@ -55,6 +55,8 @@ import {
   MonitoringOcpp2Api,
   NetworkProfileFilter,
   OIDCAuthProvider,
+  ProvisioningDataApi,
+  ProvisioningModule,
   RabbitMQChannelManager,
   RabbitMQConnectionManager,
   RabbitMqReceiver,
@@ -469,6 +471,10 @@ export class CitrineOSServer {
     if (this._config.modules.tenant) {
       await this.initTenantModule();
     }
+
+    if (this._config.modules.provisioning) {
+      await this.initProvisioningModule();
+    }
   }
 
   protected initApiAuthProvider(): IApiAuthProvider {
@@ -674,6 +680,20 @@ export class CitrineOSServer {
     this._logger.info('Tenant module initialized');
   }
 
+  protected async initProvisioningModule() {
+    const module = new ProvisioningModule(
+      this._config,
+      this._cache,
+      this._createSender(),
+      this._createHandler(),
+      this._logger,
+      this._ocppValidator,
+    );
+    await this.initHandlersAndAddModule(module);
+    this.apis.push(new ProvisioningDataApi(module, this._server, this._logger));
+    this._logger.info('Provisioning module initialized');
+  }
+
   protected async initModule(eventGroup = this.eventGroup) {
     this._logger.info(`Initializing module: ${this.appName}`);
     switch (eventGroup) {
@@ -700,6 +720,9 @@ export class CitrineOSServer {
         break;
       case EventGroup.Tenant:
         await this.initTenantModule();
+        break;
+      case EventGroup.Provisioning:
+        await this.initProvisioningModule();
         break;
       default:
         throw new Error('Unhandled module type: ' + this.appName);
