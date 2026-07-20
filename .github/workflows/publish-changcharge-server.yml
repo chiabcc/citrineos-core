@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Build the ChangCharge CitrineOS fork (v1.9.1 + Provisioning module, ADR 010)
+# and publish it to GHCR so the Dokploy stack can pull it:
+#   ghcr.io/<owner>/citrineos-server:1.9.1-provisioning
+#
+# Runs on pushes to the fork branch and on manual dispatch. After the first
+# successful push, set the package visibility to Public once in the GitHub UI
+# (Packages -> citrineos-server -> Package settings -> Change visibility).
+name: Publish ChangCharge Server Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to publish'
+        default: '1.9.1-provisioning'
+  push:
+    branches:
+      - changcharge/provisioning
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/citrineos-server
+          tags: |
+            type=raw,value=${{ github.event.inputs.tag || '1.9.1-provisioning' }}
+            type=sha,format=short
+
+      - name: Build and push server image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./
+          file: ./Server/deploy.Dockerfile
+          # Dokploy runs on linux/amd64; single-arch keeps this build fast.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
