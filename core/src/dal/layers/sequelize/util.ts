@@ -53,6 +53,9 @@ import { TenantPartner } from './model/TenantPartner.js';
 import { Transaction } from './model/TransactionEvent/Transaction.js';
 import { TransactionEvent } from './model/TransactionEvent/TransactionEvent.js';
 import { Variable } from './model/DeviceModel/Variable.js';
+// Additive model owned by the Provisioning module (station-scoped authorizations).
+// Registered here so the same sync/ORM mechanism creates and manages it.
+import { StationAuthorization } from '../../../modules/Provisioning/src/model/StationAuthorization.js';
 import { VariableAttribute } from './model/DeviceModel/VariableAttribute.js';
 import { VariableCharacteristics } from './model/DeviceModel/VariableCharacteristics.js';
 import { VariableMonitoring } from './model/VariableMonitoring/VariableMonitoring.js';
@@ -193,6 +196,7 @@ export class DefaultSequelizeInstance {
         SendLocalListAuthorization,
         Tenant,
         TenantPartner,
+        StationAuthorization,
       ],
       pool: this.config.database.pool,
       ...(this.config.database.ssl && {

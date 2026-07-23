@@ -16,6 +16,7 @@ import {
 import { Authorization, ChargingStation, Connector, Evse } from '@dal/layers/sequelize/index.js';
 import type { IProvisioningModuleApi } from './interface.js';
 import { ProvisioningModule } from './module.js';
+import { StationAuthorization } from '../model/StationAuthorization.js';
 
 interface TenantQuerystring {
   tenantId: number;
@@ -45,6 +46,8 @@ const ListChargingStationsQuerySchema = QuerySchema('ListChargingStationsQuerySc
 interface CreateAuthorizationRequest {
   idToken: string;
   idTokenType?: string;
+  // When present, scope this token to the given station (StationAuthorizations row).
+  stationId?: string;
 }
 
 const CreateAuthorizationRequestSchema = {
@@ -53,10 +56,36 @@ const CreateAuthorizationRequestSchema = {
   properties: {
     idToken: { type: 'string', minLength: 1, maxLength: 36 },
     idTokenType: { type: 'string', default: 'ISO14443' },
+    // Optional station scope. Absent = global tag (usable at any station).
+    stationId: { type: 'string', minLength: 1, maxLength: 36, pattern: '^[A-Za-z0-9._:|@-]+$' },
   },
   required: ['idToken'],
   additionalProperties: false,
 };
+
+// GET list: tenantId required; optional idToken / stationId filters.
+const ListAuthorizationsQuerySchema = QuerySchema('ListAuthorizationsQuerySchema', [
+  { key: 'tenantId', type: 'number', required: true, defaultValue: '1' },
+  { key: 'idToken', type: 'string' },
+  { key: 'stationId', type: 'string' },
+]);
+
+// DELETE: tenantId + idToken required; optional stationId to drop a single scope row.
+const DeleteAuthorizationQuerySchema = QuerySchema('DeleteAuthorizationQuerySchema', [
+  { key: 'tenantId', type: 'number', required: true, defaultValue: '1' },
+  { key: 'idToken', type: 'string', required: true },
+  { key: 'stationId', type: 'string' },
+]);
+
+interface ListAuthorizationsQuerystring extends TenantQuerystring {
+  idToken?: string;
+  stationId?: string;
+}
+
+interface DeleteAuthorizationQuerystring extends TenantQuerystring {
+  idToken: string;
+  stationId?: string;
+}
 
 const CreateChargingStationRequestSchema = {
   $id: 'CreateChargingStationRequestSchema',
@@ -171,12 +200,100 @@ export class ProvisioningDataApi
     }>,
   ): Promise<IMessageConfirmation> {
     const tenantId = request.query.tenantId;
-    const { idToken, idTokenType = 'ISO14443' } = request.body;
+    const { idToken, idTokenType = 'ISO14443', stationId } = request.body;
     const [row] = await Authorization.findOrCreate({
       where: { tenantId, idToken },
       defaults: { tenantId, idToken, idTokenType, status: 'Accepted' },
     });
+    // Optional station scope: upsert the (authorizationId, stationId) row.
+    if (stationId) {
+      await StationAuthorization.findOrCreate({
+        where: { tenantId, authorizationId: row.id, stationId },
+        defaults: { tenantId, authorizationId: row.id, stationId },
+      });
+    }
     return { success: true, payload: { id: row.id, idToken } };
+  }
+
+  /**
+   * Delete an authorization or one of its station scopes (idempotent).
+   * - with stationId: drop just that (authorizationId, stationId) scope row.
+   * - without stationId: delete the Authorization and all of its scope rows.
+   */
+  @AsDataEndpoint(
+    Namespace.AuthorizationData,
+    HttpMethod.Delete,
+    DeleteAuthorizationQuerySchema,
+  )
+  async deleteAuthorization(
+    request: FastifyRequest<{ Querystring: DeleteAuthorizationQuerystring }>,
+  ): Promise<IMessageConfirmation> {
+    const { tenantId, idToken, stationId } = request.query;
+    const authorization = await Authorization.findOne({ where: { tenantId, idToken } });
+    if (!authorization) {
+      // Idempotent: nothing to delete.
+      return { success: true };
+    }
+
+    if (stationId) {
+      const removed = await StationAuthorization.destroy({
+        where: { tenantId, authorizationId: authorization.id, stationId },
+      });
+      this._logger.info(
+        `Removed ${removed} station scope(s) for idToken ${idToken} at station ${stationId} (tenant ${tenantId})`,
+      );
+      return { success: true };
+    }
+
+    // Delete all scope rows first, then the authorization itself.
+    await StationAuthorization.destroy({ where: { tenantId, authorizationId: authorization.id } });
+    await authorization.destroy();
+    this._logger.info(`Deleted authorization idToken ${idToken} (tenant ${tenantId})`);
+    return { success: true };
+  }
+
+  /** List authorizations with their station scopes; optional idToken / stationId filters. */
+  @AsDataEndpoint(Namespace.AuthorizationData, HttpMethod.Get, ListAuthorizationsQuerySchema)
+  async listAuthorizations(
+    request: FastifyRequest<{ Querystring: ListAuthorizationsQuerystring }>,
+  ): Promise<IMessageConfirmation> {
+    const { tenantId, idToken, stationId } = request.query;
+
+    // When filtering by station, restrict to authorizations that have a scope row there.
+    let authIdFilter: number[] | undefined;
+    if (stationId) {
+      const scoped = await StationAuthorization.findAll({
+        where: { tenantId, stationId },
+        attributes: ['authorizationId'],
+      });
+      authIdFilter = [...new Set(scoped.map((s) => s.authorizationId))];
+      if (authIdFilter.length === 0) {
+        return { success: true, payload: [] };
+      }
+    }
+
+    const where: Record<string, unknown> = { tenantId };
+    if (idToken) {
+      where.idToken = idToken;
+    }
+    if (authIdFilter) {
+      where.id = authIdFilter;
+    }
+
+    const authorizations = await Authorization.findAll({ where, order: [['idToken', 'ASC']] });
+    const ids = authorizations.map((a) => a.id);
+    const scopes = ids.length
+      ? await StationAuthorization.findAll({ where: { tenantId, authorizationId: ids } })
+      : [];
+
+    const payload = authorizations.map((a) => ({
+      id: a.id,
+      idToken: a.idToken,
+      status: a.status,
+      stationIds: scopes.filter((s) => s.authorizationId === a.id).map((s) => s.stationId),
+    }));
+
+    return { success: true, payload };
   }
 
   @AsDataEndpoint(Namespace.ChargingStation, HttpMethod.Get, ListChargingStationsQuerySchema)

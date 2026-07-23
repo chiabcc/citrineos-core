@@ -62,6 +62,7 @@ import {
   RabbitMqReceiver,
   RabbitMqSender,
   RealTimeAuthorizer,
+  StationScopeAuthorizer,
   RedisCache,
   ReportingModule,
   ReportingOcpp16Api,
@@ -118,6 +119,7 @@ export class CitrineOSServer {
   protected _certificateAuthorityService!: CertificateAuthorityService;
   protected _smartChargingService!: ISmartCharging;
   protected _realTimeAuthorizer!: IAuthorizer;
+  protected _stationScopeAuthorizer!: IAuthorizer;
 
   protected readonly appName: string;
   protected _connectionManager?: RabbitMQConnectionManager;
@@ -196,6 +198,7 @@ export class CitrineOSServer {
     this.initCertificateAuthorityService();
     this.initSmartChargingService();
     this.initRealTimeAuthorizer();
+    this.initStationScopeAuthorizer();
   }
 
   async initialize(): Promise<void> {
@@ -563,7 +566,7 @@ export class CitrineOSServer {
       this._repositoryStore.locationRepository,
       this._certificateAuthorityService,
       this._realTimeAuthorizer,
-      [],
+      [this._stationScopeAuthorizer],
       this._idGenerator,
     );
     await this.initHandlersAndAddModule(module);
@@ -656,6 +659,7 @@ export class CitrineOSServer {
       this._repositoryStore.reservationRepository,
       this._repositoryStore.ocppMessageRepository,
       this._realTimeAuthorizer,
+      [this._stationScopeAuthorizer],
     );
     await this.initHandlersAndAddModule(module);
     this.apis.push(
@@ -788,5 +792,11 @@ export class CitrineOSServer {
       this._config,
       this._logger,
     );
+  }
+
+  // Station-scoped authorization (ChangCharge local-start policy). Wired into both the
+  // EVDriver Authorize chain and the Transactions StartTransaction chain below.
+  protected initStationScopeAuthorizer() {
+    this._stationScopeAuthorizer = new StationScopeAuthorizer(this._logger);
   }
 }

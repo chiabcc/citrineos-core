@@ -5,3 +5,5 @@
 export { ProvisioningDataApi } from './module/DataApi.js';
 export type { IProvisioningModuleApi } from './module/interface.js';
 export { ProvisioningModule } from './module/module.js';
+export { StationAuthorization } from './model/StationAuthorization.js';
+export { StationScopeAuthorizer } from './authorizer/StationScopeAuthorizer.js';
