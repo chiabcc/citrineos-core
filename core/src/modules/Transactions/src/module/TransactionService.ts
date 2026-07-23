@@ -339,11 +339,16 @@ export class TransactionService {
         return response;
       }
 
-      // Check concurrent transactions
-      const hasConcurrent = await this._hasConcurrentTransactions(tenantId, authorization.id);
-      if (hasConcurrent) {
-        response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.ConcurrentTx;
-        return response;
+      // Check concurrent transactions — only when the authorization opts in,
+      // matching the 2.0.1/2.1 paths above. A shared self-start tag (one
+      // idToken scoped to many stations) legitimately charges on several
+      // stations at once; an unconditional check would reject the second one.
+      if (authorization.concurrentTransaction === true) {
+        const hasConcurrent = await this._hasConcurrentTransactions(tenantId, authorization.id);
+        if (hasConcurrent) {
+          response.idTagInfo.status = OCPP1_6.StartTransactionResponseStatus.ConcurrentTx;
+          return response;
+        }
       }
 
       // Check authorizers
