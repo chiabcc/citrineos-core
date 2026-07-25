@@ -176,11 +176,15 @@ export function createDockerConfig() {
     },
     util: {
       cache: {
-        memory: true,
+        redis: {
+          host: 'redis',
+          port: 6379,
+        },
       },
       messageBroker: {
         amqp: {
-          url: 'amqp://guest:guest@amqp-broker:5672',
+          // Env-overridable so each instance can target a distinct RabbitMQ cluster node.
+          url: process.env.CITRINEOS_AMQP_URL || 'amqp://guest:guest@amqp-broker:5672',
           exchange: 'citrineos',
         },
       },
