@@ -26,8 +26,27 @@ interface ListChargingStationsQuerystring extends TenantQuerystring {
   stationId?: string;
 }
 
+interface CreateConnectorInput {
+  type?: string;
+  powerType?: string;
+  maxPowerW?: number;
+}
+
+interface CreateEvseInput {
+  evseNo: number;
+  connectors: CreateConnectorInput[];
+}
+
 interface CreateChargingStationRequest {
   stationId: string;
+  ocppVersion?: string;
+  /**
+   * Full topology: one entry per EVSE (= one car served at a time), each with
+   * its connectors. An EVSE with two connectors is a station that has, say,
+   * CCS2 + CHAdeMO on one supply point and can only run one of them at a time.
+   */
+  evses?: CreateEvseInput[];
+  /** Legacy shorthand: N connectors, one EVSE each. Ignored when `evses` is given. */
   connectorCount?: number;
   chargePointVendor?: string;
   chargePointModel?: string;
@@ -93,9 +112,38 @@ const CreateChargingStationRequestSchema = {
   properties: {
     // Station identity used in the OCPP-J WebSocket URL path — keep charset URL-safe
     stationId: { type: 'string', minLength: 1, maxLength: 36, pattern: '^[A-Za-z0-9._:|@-]+$' },
-    // OCPP 1.6 chargers cannot report their topology; caller must declare it.
-    // Modeled as 1 EVSE per connector (evseTypeId N ↔ connectorId N).
-    connectorCount: { type: 'integer', minimum: 1, maximum: 8, default: 1 },
+    ocppVersion: { type: 'string', enum: ['1.6', '2.0.1'], default: '1.6' },
+    // OCPP 1.6 stations cannot report their topology; the caller declares it.
+    // EVSE : Connector is 1:N — do NOT assume one EVSE per connector.
+    evses: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 8,
+      items: {
+        type: 'object',
+        properties: {
+          evseNo: { type: 'integer', minimum: 1, maximum: 8 },
+          connectors: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 4,
+            items: {
+              type: 'object',
+              properties: {
+                type: { type: 'string', maxLength: 20 },
+                powerType: { type: 'string', maxLength: 20 },
+                maxPowerW: { type: 'integer', minimum: 100, maximum: 1000000 },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['evseNo', 'connectors'],
+        additionalProperties: false,
+      },
+    },
+    // Legacy shorthand kept so older callers keep working: N connectors, 1 EVSE each.
+    connectorCount: { type: 'integer', minimum: 1, maximum: 8 },
     chargePointVendor: { type: 'string', maxLength: 20 },
     chargePointModel: { type: 'string', maxLength: 20 },
   },
@@ -135,7 +183,19 @@ export class ProvisioningDataApi
     }>,
   ): Promise<IMessageConfirmation> {
     const tenantId = request.query.tenantId;
-    const { stationId, connectorCount = 1, chargePointVendor, chargePointModel } = request.body;
+    const { stationId, evses: evseInput, connectorCount, chargePointVendor, chargePointModel } =
+      request.body;
+
+    // Topology comes from the caller. `evses` is the real shape (1 EVSE : N
+    // connectors); `connectorCount` stays supported as the old shorthand meaning
+    // "N single-connector EVSEs".
+    const topology: CreateEvseInput[] =
+      evseInput && evseInput.length > 0
+        ? evseInput
+        : Array.from({ length: connectorCount ?? 1 }, (_, i) => ({
+            evseNo: i + 1,
+            connectors: [{}],
+          }));
 
     const existing = await ChargingStation.findOne({ where: { id: stationId, tenantId } });
     if (existing) {
@@ -148,36 +208,47 @@ export class ProvisioningDataApi
           { id: stationId, tenantId, isOnline: false, chargePointVendor, chargePointModel },
           { transaction },
         );
-        const evses: { evseTypeId: number; connectorId: number }[] = [];
-        for (let i = 1; i <= connectorCount; i++) {
+        const evses: { evseTypeId: number; connectorIds: number[] }[] = [];
+        // connectorId is unique per STATION (OCPP 1.6) and keeps counting across
+        // EVSEs; evseTypeConnectorId restarts at 1 inside each EVSE (OCPP 2.0.1).
+        let connectorId = 0;
+        for (const evseSpec of topology) {
           const evse = await Evse.create(
             {
               tenantId,
               stationId,
               stationPkId: station.pkId,
-              evseTypeId: i,
-              evseId: `${stationId}-${i}`,
+              evseTypeId: evseSpec.evseNo,
+              evseId: `${stationId}-${evseSpec.evseNo}`,
             },
             { transaction },
           );
-          await Connector.create(
-            {
-              tenantId,
-              stationId,
-              connectorId: i,
-              evseId: evse.id,
-              evseTypeConnectorId: 1,
-              status: 'Unknown',
-            },
-            { transaction },
-          );
-          evses.push({ evseTypeId: i, connectorId: i });
+          const connectorIds: number[] = [];
+          for (const [j, connectorSpec] of evseSpec.connectors.entries()) {
+            connectorId += 1;
+            await Connector.create(
+              {
+                tenantId,
+                stationId,
+                connectorId,
+                evseId: evse.id,
+                evseTypeConnectorId: j + 1,
+                status: 'Unknown',
+                type: connectorSpec.type,
+                powerType: connectorSpec.powerType,
+                maximumPowerWatts: connectorSpec.maxPowerW,
+              },
+              { transaction },
+            );
+            connectorIds.push(connectorId);
+          }
+          evses.push({ evseTypeId: evseSpec.evseNo, connectorIds });
         }
         return { pkId: station.pkId, evses };
       });
 
       this._logger.info(
-        `Provisioned charging station ${stationId} (tenant ${tenantId}) with ${connectorCount} connector(s)`,
+        `Provisioned charging station ${stationId} (tenant ${tenantId}) with ${topology.length} EVSE(s)`,
       );
       return { success: true, payload: { stationId, ...created } };
     } catch (error) {
