@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  AuthorizationStatusEnum,
   type AuthorizationStatusEnumType,
   type AuthorizationDto,
   type IAuthorizer,
@@ -12,6 +11,7 @@ import {
 import type { ILogObj } from 'tslog';
 import { Logger } from 'tslog';
 import { StationAuthorization } from '../model/StationAuthorization.js';
+import { decideStationScope } from './station-scope.js';
 
 /**
  * StationScopeAuthorizer — restricts an idToken to specific charging stations.
@@ -42,19 +42,13 @@ export class StationScopeAuthorizer implements IAuthorizer {
       attributes: ['stationId'],
     });
 
-    if (scopes.length === 0) {
-      this._logger.debug(
-        `Authorization ${authorization.id} has no station scope; treating as global (Accepted) at station ${context.stationId}`,
-      );
-      return AuthorizationStatusEnum.Accepted;
-    }
-
-    const allowed = scopes.some((s) => s.stationId === context.stationId);
+    const scopedStationIds = scopes.map((s) => s.stationId);
+    const decision = decideStationScope(scopedStationIds, context.stationId) as AuthorizationStatusEnumType;
     this._logger.debug(
-      `Authorization ${authorization.id} scoped to [${scopes
-        .map((s) => s.stationId)
-        .join(', ')}]; station ${context.stationId} -> ${allowed ? 'Accepted' : 'Blocked'}`,
+      scopedStationIds.length === 0
+        ? `Authorization ${authorization.id} has no station scope; treating as global (Accepted) at station ${context.stationId}`
+        : `Authorization ${authorization.id} scoped to [${scopedStationIds.join(', ')}]; station ${context.stationId} -> ${decision}`,
     );
-    return allowed ? AuthorizationStatusEnum.Accepted : AuthorizationStatusEnum.Blocked;
+    return decision;
   }
 }
