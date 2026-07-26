@@ -17,6 +17,7 @@ import { Authorization, ChargingStation, Connector, Evse } from '@dal/layers/seq
 import type { IProvisioningModuleApi } from './interface.js';
 import { ProvisioningModule } from './module.js';
 import { StationAuthorization } from '../model/StationAuthorization.js';
+import { planTopology, type CreateConnectorInput, type CreateEvseInput } from './topology.js';
 
 interface TenantQuerystring {
   tenantId: number;
@@ -26,16 +27,7 @@ interface ListChargingStationsQuerystring extends TenantQuerystring {
   stationId?: string;
 }
 
-interface CreateConnectorInput {
-  type?: string;
-  powerType?: string;
-  maxPowerW?: number;
-}
 
-interface CreateEvseInput {
-  evseNo: number;
-  connectors: CreateConnectorInput[];
-}
 
 interface CreateChargingStationRequest {
   stationId: string;
@@ -186,16 +178,7 @@ export class ProvisioningDataApi
     const { stationId, evses: evseInput, connectorCount, chargePointVendor, chargePointModel } =
       request.body;
 
-    // Topology comes from the caller. `evses` is the real shape (1 EVSE : N
-    // connectors); `connectorCount` stays supported as the old shorthand meaning
-    // "N single-connector EVSEs".
-    const topology: CreateEvseInput[] =
-      evseInput && evseInput.length > 0
-        ? evseInput
-        : Array.from({ length: connectorCount ?? 1 }, (_, i) => ({
-            evseNo: i + 1,
-            connectors: [{}],
-          }));
+    const plan = planTopology({ evses: evseInput, connectorCount });
 
     const existing = await ChargingStation.findOne({ where: { id: stationId, tenantId } });
     if (existing) {
@@ -209,46 +192,44 @@ export class ProvisioningDataApi
           { transaction },
         );
         const evses: { evseTypeId: number; connectorIds: number[] }[] = [];
-        // connectorId is unique per STATION (OCPP 1.6) and keeps counting across
-        // EVSEs; evseTypeConnectorId restarts at 1 inside each EVSE (OCPP 2.0.1).
-        let connectorId = 0;
-        for (const evseSpec of topology) {
-          const evse = await Evse.create(
-            {
-              tenantId,
-              stationId,
-              stationPkId: station.pkId,
-              evseTypeId: evseSpec.evseNo,
-              evseId: `${stationId}-${evseSpec.evseNo}`,
-            },
-            { transaction },
-          );
-          const connectorIds: number[] = [];
-          for (const [j, connectorSpec] of evseSpec.connectors.entries()) {
-            connectorId += 1;
-            await Connector.create(
+        const evseRows = new Map<number, any>();
+        for (const row of plan) {
+          let evse = evseRows.get(row.evseNo);
+          if (!evse) {
+            evse = await Evse.create(
               {
                 tenantId,
                 stationId,
-                connectorId,
-                evseId: evse.id,
-                evseTypeConnectorId: j + 1,
-                status: 'Unknown',
-                type: connectorSpec.type,
-                powerType: connectorSpec.powerType,
-                maximumPowerWatts: connectorSpec.maxPowerW,
+                stationPkId: station.pkId,
+                evseTypeId: row.evseNo,
+                evseId: `${stationId}-${row.evseNo}`,
               },
               { transaction },
             );
-            connectorIds.push(connectorId);
+            evseRows.set(row.evseNo, evse);
+            evses.push({ evseTypeId: row.evseNo, connectorIds: [] });
           }
-          evses.push({ evseTypeId: evseSpec.evseNo, connectorIds });
+          await Connector.create(
+            {
+              tenantId,
+              stationId,
+              connectorId: row.connectorId,
+              evseId: evse.id,
+              evseTypeConnectorId: row.evseConnectorId,
+              status: 'Unknown',
+              type: row.connector.type,
+              powerType: row.connector.powerType,
+              maximumPowerWatts: row.connector.maxPowerW,
+            },
+            { transaction },
+          );
+          evses.find((e) => e.evseTypeId === row.evseNo)!.connectorIds.push(row.connectorId);
         }
         return { pkId: station.pkId, evses };
       });
 
       this._logger.info(
-        `Provisioned charging station ${stationId} (tenant ${tenantId}) with ${topology.length} EVSE(s)`,
+        `Provisioned charging station ${stationId} (tenant ${tenantId}) with ${new Set(plan.map((r) => r.evseNo)).size} EVSE(s)`,
       );
       return { success: true, payload: { stationId, ...created } };
     } catch (error) {
