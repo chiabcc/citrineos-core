@@ -5,6 +5,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ILogObj } from 'tslog';
 import { Logger } from 'tslog';
+import { QueryTypes } from 'sequelize';
 import type { IMessageConfirmation } from '@citrineos/base';
 import {
   AbstractModuleApi,
@@ -18,6 +19,12 @@ import type { IProvisioningModuleApi } from './interface.js';
 import { ProvisioningModule } from './module.js';
 import { StationAuthorization } from '../model/StationAuthorization.js';
 import { planTopology, type CreateConnectorInput, type CreateEvseInput } from './topology.js';
+import {
+  deletionStatement,
+  STATION_DELETION_ORDER,
+  TRANSACTION_COUNT_SQL,
+  validateDeletionOrder,
+} from './station-deletion.js';
 
 interface TenantQuerystring {
   tenantId: number;
@@ -27,7 +34,10 @@ interface ListChargingStationsQuerystring extends TenantQuerystring {
   stationId?: string;
 }
 
-
+interface DeleteChargingStationQuerystring extends TenantQuerystring {
+  stationId: string;
+  force?: boolean;
+}
 
 interface CreateChargingStationRequest {
   stationId: string;
@@ -52,6 +62,14 @@ const ProvisioningTenantQuerySchema = QuerySchema('ProvisioningTenantQuerySchema
 const ListChargingStationsQuerySchema = QuerySchema('ListChargingStationsQuerySchema', [
   { key: 'tenantId', type: 'number', required: true, defaultValue: '1' },
   { key: 'stationId', type: 'string' },
+]);
+
+// stationId is required here, unlike the GET: an omitted filter listing every
+// station is harmless, an omitted filter deleting every station is not.
+const DeleteChargingStationQuerySchema = QuerySchema('DeleteChargingStationQuerySchema', [
+  { key: 'tenantId', type: 'number', required: true, defaultValue: '1' },
+  { key: 'stationId', type: 'string', required: true },
+  { key: 'force', type: 'boolean' },
 ]);
 
 interface CreateAuthorizationRequest {
@@ -147,8 +165,9 @@ const CreateChargingStationRequestSchema = {
  * Server API for the Provisioning module.
  *
  * Endpoints (with endpointPrefix `provisioning`):
- * - POST /data/provisioning/chargingStation — create station + EVSEs + connectors in one transaction
- * - GET  /data/provisioning/chargingStation — list stations (optionally one) with topology summary
+ * - POST   /data/provisioning/chargingStation — create station + EVSEs + connectors in one transaction
+ * - GET    /data/provisioning/chargingStation — list stations (optionally one) with topology summary
+ * - DELETE /data/provisioning/chargingStation — permanently remove a station and its children
  */
 export class ProvisioningDataApi
   extends AbstractModuleApi<ProvisioningModule>
@@ -235,6 +254,95 @@ export class ProvisioningDataApi
     } catch (error) {
       this._logger.error(`Failed provisioning charging station ${stationId}`, error);
       return { success: false, payload: `Failed provisioning charging station ${stationId}` };
+    }
+  }
+
+  /**
+   * Permanently remove a station and every row that hangs off it.
+   *
+   * WHY: CitrineOS has no delete, and the database cannot do it either — the
+   * `populate_station_pk_id` trigger re-resolves `stationPkId` on the UPDATE
+   * that `ON DELETE SET NULL` issues, so a plain DELETE of the station aborts
+   * instead of cascading. Without this endpoint a factory-locked charger that
+   * changes owner is stuck forever: the new owner must onboard under the same
+   * serial, and `createChargingStation` answers "already exists".
+   *
+   * The order the rows go in lives in station-deletion.ts, derived from the FK
+   * graph and unit tested; this method only executes it, in one transaction so
+   * a mistake rolls back rather than half-erasing a station.
+   */
+  @AsDataEndpoint(Namespace.ChargingStation, HttpMethod.Delete, DeleteChargingStationQuerySchema)
+  async deleteChargingStation(
+    request: FastifyRequest<{ Querystring: DeleteChargingStationQuerystring }>,
+  ): Promise<IMessageConfirmation> {
+    const { tenantId, stationId, force = false } = request.query;
+    const replacements = { stationId, tenantId };
+
+    // Cheap insurance against a bad edit to the plan reaching production data:
+    // the unit test proves the shipped order is sound, this proves the order in
+    // the running process is the one that was tested.
+    const violations = validateDeletionOrder();
+    if (violations.length > 0) {
+      this._logger.error(
+        `Refusing to delete ${stationId}; deletion plan is inconsistent`,
+        violations,
+      );
+      return { success: false, payload: `Deletion plan is inconsistent: ${violations.join('; ')}` };
+    }
+
+    const station = await ChargingStation.findOne({ where: { id: stationId, tenantId } });
+    if (!station) {
+      // Idempotent: a second delete, or a delete racing another one, is not an
+      // error — the caller's goal (id is free) already holds.
+      return { success: false, payload: `Charging station ${stationId} does not exist` };
+    }
+
+    const sequelize = ChargingStation.sequelize!;
+
+    // Charging history is a user's billing record, not the station's. Erasing it
+    // has to be asked for explicitly, so an accidental call cannot take it.
+    const [{ count: transactionCount }] = await sequelize.query<{ count: number }>(
+      TRANSACTION_COUNT_SQL,
+      { replacements, type: QueryTypes.SELECT },
+    );
+    if (transactionCount > 0 && !force) {
+      return {
+        success: false,
+        payload: `Charging station ${stationId} has ${transactionCount} transaction(s); pass force=true to delete them too`,
+      };
+    }
+
+    try {
+      const deleted = await sequelize.transaction(async (transaction) => {
+        const counts: Record<string, number> = {};
+        for (const step of STATION_DELETION_ORDER) {
+          const [{ count }] = await sequelize.query<{ count: number }>(deletionStatement(step), {
+            replacements,
+            transaction,
+            type: QueryTypes.SELECT,
+          });
+          // Report only what was actually there; a wall of zeroes hides the row
+          // that mattered.
+          if (count > 0) {
+            counts[step.table] = count;
+          }
+        }
+        return counts;
+      });
+
+      const rows = Object.values(deleted).reduce((sum, n) => sum + n, 0);
+      this._logger.info(
+        `Deleted charging station ${stationId} (tenant ${tenantId}): ${rows} row(s) across ${Object.keys(deleted).length} table(s)`,
+        deleted,
+      );
+      return { success: true, payload: { stationId, rows, deleted } };
+    } catch (error) {
+      // The transaction rolled back, so the station is still whole.
+      this._logger.error(`Failed deleting charging station ${stationId}`, error);
+      return {
+        success: false,
+        payload: `Failed deleting charging station ${stationId}: ${(error as Error).message}`,
+      };
     }
   }
 
