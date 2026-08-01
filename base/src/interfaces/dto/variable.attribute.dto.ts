@@ -20,7 +20,10 @@ export const VariableAttributeSchema = BaseSchema.extend({
   mutability: MutabilityEnumSchema.nullable().optional(),
   persistent: z.boolean().default(false).nullable().optional(),
   constant: z.boolean().default(false).nullable().optional(),
-  generatedAt: z.iso.datetime(),
+  // Nullable to match reality: rows seeded by provisioning/boot (not by a
+  // NotifyReport) carry no generation timestamp. The non-null contract made
+  // every read of such a row throw at the model getter.
+  generatedAt: z.iso.datetime().nullable(),
   variable: VariableSchema,
   variableId: z.number().int().nullable().optional(),
   component: ComponentSchema,

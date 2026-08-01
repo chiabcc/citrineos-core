@@ -183,10 +183,14 @@ export class VariableAttribute
   @Column({
     type: DataType.DATE,
     get() {
-      return this.getDataValue('generatedAt').toISOString();
+      // Null-safe like Boot.lastBootTime / StatusNotification.timestamp:
+      // rows seeded by provisioning (not by a NotifyReport) have no generatedAt,
+      // and an unguarded toISOString() 500s every read that touches them.
+      const generatedAt = this.getDataValue('generatedAt');
+      return generatedAt ? generatedAt.toISOString() : null;
     },
   })
-  declare generatedAt: string;
+  declare generatedAt: string | null;
 
   /**
    * Relations
