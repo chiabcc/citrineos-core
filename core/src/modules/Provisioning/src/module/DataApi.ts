@@ -12,9 +12,16 @@ import {
   AsDataEndpoint,
   HttpMethod,
   Namespace,
+  OCPP1_6_Namespace,
   QuerySchema,
 } from '@citrineos/base';
-import { Authorization, ChargingStation, Connector, Evse } from '@dal/layers/sequelize/index.js';
+import {
+  Authorization,
+  ChangeConfiguration,
+  ChargingStation,
+  Connector,
+  Evse,
+} from '@dal/layers/sequelize/index.js';
 import type { IProvisioningModuleApi } from './interface.js';
 import { ProvisioningModule } from './module.js';
 import { StationAuthorization } from '../model/StationAuthorization.js';
@@ -32,6 +39,11 @@ interface TenantQuerystring {
 
 interface ListChargingStationsQuerystring extends TenantQuerystring {
   stationId?: string;
+}
+
+interface ListChangeConfigurationsQuerystring extends TenantQuerystring {
+  stationId: string;
+  key?: string;
 }
 
 interface DeleteChargingStationQuerystring extends TenantQuerystring {
@@ -62,6 +74,17 @@ const ProvisioningTenantQuerySchema = QuerySchema('ProvisioningTenantQuerySchema
 const ListChargingStationsQuerySchema = QuerySchema('ListChargingStationsQuerySchema', [
   { key: 'tenantId', type: 'number', required: true, defaultValue: '1' },
   { key: 'stationId', type: 'string' },
+]);
+
+// Read side of the OCPP 1.6 configuration store. The Configuration module's
+// GetConfiguration handler upserts every configurationKey a station answers
+// into ChangeConfigurations, but nothing exposed it — this is the only way an
+// external system can read a 1.6 station's configuration without re-asking the
+// station itself.
+const ListChangeConfigurationsQuerySchema = QuerySchema('ListChangeConfigurationsQuerySchema', [
+  { key: 'tenantId', type: 'number', required: true, defaultValue: '1' },
+  { key: 'stationId', type: 'string', required: true },
+  { key: 'key', type: 'string' },
 ]);
 
 // stationId is required here, unlike the GET: an omitted filter listing every
@@ -485,11 +508,30 @@ export class ProvisioningDataApi
     return { success: true, payload };
   }
 
+  /** OCPP 1.6 configuration as last learned from the station (GET /data/provisioning/changeConfiguration) */
+  @AsDataEndpoint(OCPP1_6_Namespace.ChangeConfiguration, HttpMethod.Get, ListChangeConfigurationsQuerySchema)
+  async listChangeConfigurations(
+    request: FastifyRequest<{ Querystring: ListChangeConfigurationsQuerystring }>,
+  ): Promise<IMessageConfirmation> {
+    const { tenantId, stationId, key } = request.query;
+    const where = key ? { tenantId, stationId, key } : { tenantId, stationId };
+
+    const rows = await ChangeConfiguration.findAll({ where, order: [['key', 'ASC']] });
+    const payload = rows.map((row) => ({
+      key: row.key,
+      value: row.value ?? null,
+      readonly: row.readonly ?? null,
+      updatedAt: row.updatedAt,
+    }));
+
+    return { success: true, payload };
+  }
+
   /**
    * Overrides superclass method to generate the URL path based on the input {@link Namespace}
    * and the module's endpoint prefix configuration.
    */
-  protected _toDataPath(input: Namespace): string {
+  protected _toDataPath(input: Namespace | OCPP1_6_Namespace): string {
     const endpointPrefix = this._module.config.modules.provisioning?.endpointPrefix ?? 'provisioning';
     return super._toDataPath(input, endpointPrefix);
   }
