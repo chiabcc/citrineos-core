@@ -1,0 +1,9 @@
+{
+  "title": "LogStatusNotificationResponse",
+  "comment": "OCPP 1.6 Security Whitepaper ed.3",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": true,
+  "$id": "LogStatusNotificationResponse",
+  "definitions": {}
+}

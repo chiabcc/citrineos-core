@@ -33,6 +33,8 @@ export { default as GetLocalListVersionRequestSchema } from './schemas/GetLocalL
 export { default as GetLocalListVersionResponseSchema } from './schemas/GetLocalListVersionResponse.json' with { type: 'json' };
 export { default as HeartbeatRequestSchema } from './schemas/HeartbeatRequest.json' with { type: 'json' };
 export { default as HeartbeatResponseSchema } from './schemas/HeartbeatResponse.json' with { type: 'json' };
+export { default as LogStatusNotificationRequestSchema } from './schemas/LogStatusNotificationRequest.json' with { type: 'json' };
+export { default as LogStatusNotificationResponseSchema } from './schemas/LogStatusNotificationResponse.json' with { type: 'json' };
 export { default as MeterValuesRequestSchema } from './schemas/MeterValuesRequest.json' with { type: 'json' };
 export { default as MeterValuesResponseSchema } from './schemas/MeterValuesResponse.json' with { type: 'json' };
 export { default as RemoteStartTransactionRequestSchema } from './schemas/RemoteStartTransactionRequest.json' with { type: 'json' };
@@ -49,6 +51,8 @@ export { default as SecurityEventNotificationRequestSchema } from './schemas/Sec
 export { default as SecurityEventNotificationResponseSchema } from './schemas/SecurityEventNotificationResponse.json' with { type: 'json' };
 export { default as SetChargingProfileRequestSchema } from './schemas/SetChargingProfileRequest.json' with { type: 'json' };
 export { default as SetChargingProfileResponseSchema } from './schemas/SetChargingProfileResponse.json' with { type: 'json' };
+export { default as SignCertificateRequestSchema } from './schemas/SignCertificateRequest.json' with { type: 'json' };
+export { default as SignCertificateResponseSchema } from './schemas/SignCertificateResponse.json' with { type: 'json' };
 export { default as SignedFirmwareStatusNotificationRequestSchema } from './schemas/SignedFirmwareStatusNotificationRequest.json' with { type: 'json' };
 export { default as SignedFirmwareStatusNotificationResponseSchema } from './schemas/SignedFirmwareStatusNotificationResponse.json' with { type: 'json' };
 export { default as SignedUpdateFirmwareRequestSchema } from './schemas/SignedUpdateFirmwareRequest.json' with { type: 'json' };
@@ -95,6 +99,8 @@ export type { GetLocalListVersionRequest } from './types/GetLocalListVersionRequ
 export type { GetLocalListVersionResponse } from './types/GetLocalListVersionResponse.js';
 export type { HeartbeatRequest } from './types/HeartbeatRequest.js';
 export type { HeartbeatResponse } from './types/HeartbeatResponse.js';
+export type { LogStatusNotificationRequest } from './types/LogStatusNotificationRequest.js';
+export type { LogStatusNotificationResponse } from './types/LogStatusNotificationResponse.js';
 export type { MeterValuesRequest } from './types/MeterValuesRequest.js';
 export type { MeterValuesResponse } from './types/MeterValuesResponse.js';
 export type { RemoteStartTransactionRequest } from './types/RemoteStartTransactionRequest.js';
@@ -111,6 +117,8 @@ export type { SetChargingProfileRequest } from './types/SetChargingProfileReques
 export type { SetChargingProfileResponse } from './types/SetChargingProfileResponse.js';
 export type { SecurityEventNotificationRequest } from './types/SecurityEventNotificationRequest.js';
 export type { SecurityEventNotificationResponse } from './types/SecurityEventNotificationResponse.js';
+export type { SignCertificateRequest } from './types/SignCertificateRequest.js';
+export type { SignCertificateResponse } from './types/SignCertificateResponse.js';
 export type { SignedFirmwareStatusNotificationRequest } from './types/SignedFirmwareStatusNotificationRequest.js';
 export type { SignedFirmwareStatusNotificationResponse } from './types/SignedFirmwareStatusNotificationResponse.js';
 export type { SignedUpdateFirmwareRequest } from './types/SignedUpdateFirmwareRequest.js';

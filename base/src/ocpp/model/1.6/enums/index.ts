@@ -62,6 +62,21 @@ export enum DataTransferResponseStatus {
   UnknownVendorId = 'UnknownVendorId',
 }
 
+export enum LogStatusNotificationRequestStatus {
+  BadMessage = 'BadMessage',
+  Idle = 'Idle',
+  NotSupportedOperation = 'NotSupportedOperation',
+  PermissionDenied = 'PermissionDenied',
+  Uploaded = 'Uploaded',
+  UploadFailure = 'UploadFailure',
+  Uploading = 'Uploading',
+}
+
+export enum SignCertificateResponseStatus {
+  Accepted = 'Accepted',
+  Rejected = 'Rejected',
+}
+
 export enum DiagnosticsStatusNotificationRequestStatus {
   Idle = 'Idle',
   Uploaded = 'Uploaded',

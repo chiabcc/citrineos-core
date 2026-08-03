@@ -1,0 +1,16 @@
+{
+  "title": "SignCertificateRequest",
+  "comment": "OCPP 1.6 Security Whitepaper ed.3",
+  "type": "object",
+  "properties": {
+    "csr": {
+      "description": "The PEM encoded RFC 2986 certificate signing request.",
+      "type": "string",
+      "maxLength": 5500
+    }
+  },
+  "additionalProperties": true,
+  "required": ["csr"],
+  "$id": "SignCertificateRequest",
+  "definitions": {}
+}

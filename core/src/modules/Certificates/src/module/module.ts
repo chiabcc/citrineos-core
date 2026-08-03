@@ -17,6 +17,8 @@ import {
   MessageOrigin,
   OCPP_CallAction,
   OCPP_2_VER_LIST,
+  OCPP1_6,
+  OCPPVersion,
   OcppError,
   OCPPValidator,
   type SystemConfig,
@@ -273,6 +275,33 @@ export class CertificatesModule extends AbstractModule {
         statusInfo: { reasonCode: ErrorCode.GenericError },
       } as OCPP2_response_types.GetCertificateStatusResponse);
     }
+  }
+
+  /**
+   * A 1.6 station asking us to sign its CSR (Security Whitepaper ed.3).
+   *
+   * Answered Rejected on purpose. Signing is only half the exchange — the
+   * signed certificate goes back over CertificateSigned, which this fork does
+   * not implement for 1.6, so accepting would leave the station waiting for a
+   * certificate that can never arrive. A clear Rejected lets it fall back;
+   * refusing the frame outright (the behaviour before this handler existed)
+   * told it the CSMS was broken instead.
+   */
+  @AsHandler([OCPPVersion.OCPP1_6], OCPP_CallAction.SignCertificate)
+  protected async _handleOcpp16SignCertificate(
+    message: IMessage<OCPP1_6.SignCertificateRequest>,
+    props?: HandlerProperties,
+  ): Promise<void> {
+    this._logger.info(
+      'OCPP 1.6 SignCertificate received; rejecting (no CertificateSigned path for 1.6)',
+      message,
+      props,
+    );
+
+    const response: OCPP1_6.SignCertificateResponse = {
+      status: OCPP1_6.SignCertificateResponseStatus.Rejected,
+    };
+    await this.sendCallResultWithMessage(message, response);
   }
 
   @AsHandler(OCPP_2_VER_LIST, OCPP_CallAction.SignCertificate)

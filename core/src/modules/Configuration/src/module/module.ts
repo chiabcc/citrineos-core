@@ -787,6 +787,38 @@ export class ConfigurationModule extends AbstractModule {
    * Handle OCPP 1.6 requests
    */
 
+  /**
+   * Firmware update progress from a 1.6 station.
+   *
+   * Deliberately NOT a copy of the 2.x handler above: 2.x requires a requestId
+   * and answers a CallError without one, but the 1.6 message has no such field
+   * at all — carrying that rule over would refuse every well-formed 1.6 frame.
+   * Acknowledging is the whole job; the status itself travels to subscribers
+   * through the normal dispatch.
+   */
+  @AsHandler([OCPPVersion.OCPP1_6], OCPP_CallAction.FirmwareStatusNotification)
+  protected async _handleOcpp16FirmwareStatusNotification(
+    message: IMessage<OCPP1_6.FirmwareStatusNotificationRequest>,
+    props?: HandlerProperties,
+  ): Promise<void> {
+    this._logger.debug('OCPP 1.6 FirmwareStatusNotification received:', message, props);
+
+    const response: OCPP1_6.FirmwareStatusNotificationResponse = {};
+    await this.sendCallResultWithMessage(message, response);
+  }
+
+  /** Signed firmware update progress (Security Whitepaper ed.3) — same shape, signed variant */
+  @AsHandler([OCPPVersion.OCPP1_6], OCPP_CallAction.SignedFirmwareStatusNotification)
+  protected async _handleOcpp16SignedFirmwareStatusNotification(
+    message: IMessage<OCPP1_6.SignedFirmwareStatusNotificationRequest>,
+    props?: HandlerProperties,
+  ): Promise<void> {
+    this._logger.debug('OCPP 1.6 SignedFirmwareStatusNotification received:', message, props);
+
+    const response: OCPP1_6.SignedFirmwareStatusNotificationResponse = {};
+    await this.sendCallResultWithMessage(message, response);
+  }
+
   @AsHandler([OCPPVersion.OCPP1_6], OCPP_CallAction.Heartbeat)
   protected async _handle16Heartbeat(
     message: IMessage<OCPP1_6.HeartbeatRequest>,

@@ -1,0 +1,41 @@
+{
+  "title": "LogStatusNotificationRequest",
+  "comment": "OCPP 1.6 Security Whitepaper ed.3",
+  "type": "object",
+  "properties": {
+    "status": {
+      "$ref": "#/definitions/LogStatusNotificationRequestStatus"
+    },
+    "requestId": {
+      "description": "The request id that was provided in the GetLogRequest that started this log upload. Absent when the notification was triggered rather than requested.",
+      "type": "integer"
+    }
+  },
+  "additionalProperties": true,
+  "required": ["status"],
+  "$id": "LogStatusNotificationRequest",
+  "definitions": {
+    "LogStatusNotificationRequestStatus": {
+      "type": "string",
+      "additionalProperties": true,
+      "enum": [
+        "BadMessage",
+        "Idle",
+        "NotSupportedOperation",
+        "PermissionDenied",
+        "Uploaded",
+        "UploadFailure",
+        "Uploading"
+      ],
+      "tsEnumNames": [
+        "BadMessage",
+        "Idle",
+        "NotSupportedOperation",
+        "PermissionDenied",
+        "Uploaded",
+        "UploadFailure",
+        "Uploading"
+      ]
+    }
+  }
+}

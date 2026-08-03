@@ -300,6 +300,11 @@ const OCPP_CallActions = new Set<string>([
   OCPP_CallAction.DiagnosticsStatusNotification,
   OCPP_CallAction.GetConfiguration,
   OCPP_CallAction.GetDiagnostics,
+  // Security Whitepaper ed.3, station-initiated. Same reason as
+  // SecurityEventNotification below: a station that sends these was doing the
+  // right thing, and leaving them out means it is refused before any handler
+  // sees the frame.
+  OCPP_CallAction.LogStatusNotification,
   OCPP_CallAction.RemoteStartTransaction,
   OCPP_CallAction.RemoteStopTransaction,
   // Security Whitepaper ed.3 — an optional 1.6 extension, but stations send it
@@ -307,6 +312,12 @@ const OCPP_CallActions = new Set<string>([
   // out of this set means the frame is refused before any handler sees it, and
   // the station gets a CallError for doing something correct.
   OCPP_CallAction.SecurityEventNotification,
+  OCPP_CallAction.SignCertificate,
+  // Signed firmware update (Security Whitepaper ed.3). The schemas were already
+  // in the tree; only the allow-list entry was missing, so a station reporting
+  // signed-update progress was refused.
+  OCPP_CallAction.SignedFirmwareStatusNotification,
+  OCPP_CallAction.SignedUpdateFirmware,
   OCPP_CallAction.StartTransaction,
   OCPP_CallAction.StopTransaction,
 ]);

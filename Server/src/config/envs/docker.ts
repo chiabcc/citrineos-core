@@ -64,6 +64,10 @@ export function createDockerConfig() {
           OCPP_CallAction.Heartbeat,
           OCPP_CallAction.NotifyDisplayMessages,
           OCPP_CallAction.PublishFirmwareStatusNotification,
+          // 1.6 signed-firmware progress. A module only receives the actions
+          // listed here — a handler alone is not enough, and the station gets
+          // no answer at all rather than an error.
+          OCPP_CallAction.SignedFirmwareStatusNotification,
         ],
         heartbeatInterval: 60,
         bootRetryInterval: 15,

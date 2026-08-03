@@ -1,0 +1,21 @@
+{
+  "title": "SignCertificateResponse",
+  "comment": "OCPP 1.6 Security Whitepaper ed.3",
+  "type": "object",
+  "properties": {
+    "status": {
+      "$ref": "#/definitions/SignCertificateResponseStatus"
+    }
+  },
+  "additionalProperties": true,
+  "required": ["status"],
+  "$id": "SignCertificateResponse",
+  "definitions": {
+    "SignCertificateResponseStatus": {
+      "type": "string",
+      "additionalProperties": true,
+      "enum": ["Accepted", "Rejected"],
+      "tsEnumNames": ["Accepted", "Rejected"]
+    }
+  }
+}

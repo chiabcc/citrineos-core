@@ -456,6 +456,24 @@ export class ReportingModule extends AbstractModule {
     await this.sendCallResultWithMessage(message, response);
   }
 
+  /**
+   * Log upload progress from a 1.6 station (Security Whitepaper ed.3).
+   *
+   * Unlike the 2.x handler above, requestId is not enforced: 1.6 makes it
+   * optional, and a station reporting progress for a triggered upload sends
+   * none. Demanding it would answer a correct frame with a CallError.
+   */
+  @AsHandler([OCPPVersion.OCPP1_6], OCPP_CallAction.LogStatusNotification)
+  protected async _handleOcpp16LogStatusNotification(
+    message: IMessage<OCPP1_6.LogStatusNotificationRequest>,
+    props?: HandlerProperties,
+  ): Promise<void> {
+    this._logger.debug('OCPP 1.6 LogStatusNotification received:', message, props);
+
+    const response: OCPP1_6.LogStatusNotificationResponse = {};
+    await this.sendCallResultWithMessage(message, response);
+  }
+
   @AsHandler([OCPPVersion.OCPP1_6], OCPP_CallAction.DiagnosticsStatusNotification)
   protected async _handleDiagnosticsStatusNotification(
     message: IMessage<OCPP1_6.DiagnosticsStatusNotificationRequest>,
