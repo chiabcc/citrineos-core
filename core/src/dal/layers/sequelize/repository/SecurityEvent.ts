@@ -2,11 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 import type { BootstrapConfig } from '@citrineos/base';
-import { OCPP2_0_1 } from '@citrineos/base';
 import { SecurityEvent } from '../model/SecurityEvent.js';
 import { SequelizeRepository } from './Base.js';
 import { Op } from 'sequelize';
-import type { ISecurityEventRepository } from '../../../interfaces/repositories.js';
+import type {
+  ISecurityEventRepository,
+  SecurityEventInput,
+} from '../../../interfaces/repositories.js';
 import { Sequelize } from 'sequelize-typescript';
 import type { ILogObj } from 'tslog';
 import { Logger } from 'tslog';
@@ -21,7 +23,7 @@ export class SequelizeSecurityEventRepository
 
   async createByStationId(
     tenantId: number,
-    value: OCPP2_0_1.SecurityEventNotificationRequest,
+    value: SecurityEventInput,
     stationId: string,
   ): Promise<SecurityEvent> {
     return await this.create(

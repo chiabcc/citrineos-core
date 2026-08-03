@@ -1,0 +1,26 @@
+{
+  "title": "SecurityEventNotificationRequest",
+  "comment": "OCPP 1.6 Security Whitepaper ed.3",
+  "type": "object",
+  "properties": {
+    "type": {
+      "description": "Type of the security event. The whitepaper says this SHOULD be taken from its list, not MUST — so it is a plain string here rather than an enum. Rejecting an unlisted value would answer a station's notification with a CallError, which is the behaviour this message was added to stop.",
+      "type": "string",
+      "maxLength": 50
+    },
+    "timestamp": {
+      "description": "Date and time at which the event occurred.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "techInfo": {
+      "description": "Additional information about the occurred security event.",
+      "type": "string",
+      "maxLength": 255
+    }
+  },
+  "additionalProperties": true,
+  "required": ["type", "timestamp"],
+  "$id": "SecurityEventNotificationRequest",
+  "definitions": {}
+}

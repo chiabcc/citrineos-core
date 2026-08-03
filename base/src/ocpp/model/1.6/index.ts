@@ -45,6 +45,8 @@ export { default as ResetRequestSchema } from './schemas/ResetRequest.json' with
 export { default as ResetResponseSchema } from './schemas/ResetResponse.json' with { type: 'json' };
 export { default as SendLocalListRequestSchema } from './schemas/SendLocalListRequest.json' with { type: 'json' };
 export { default as SendLocalListResponseSchema } from './schemas/SendLocalListResponse.json' with { type: 'json' };
+export { default as SecurityEventNotificationRequestSchema } from './schemas/SecurityEventNotificationRequest.json' with { type: 'json' };
+export { default as SecurityEventNotificationResponseSchema } from './schemas/SecurityEventNotificationResponse.json' with { type: 'json' };
 export { default as SetChargingProfileRequestSchema } from './schemas/SetChargingProfileRequest.json' with { type: 'json' };
 export { default as SetChargingProfileResponseSchema } from './schemas/SetChargingProfileResponse.json' with { type: 'json' };
 export { default as SignedFirmwareStatusNotificationRequestSchema } from './schemas/SignedFirmwareStatusNotificationRequest.json' with { type: 'json' };
@@ -107,6 +109,8 @@ export type { SendLocalListRequest } from './types/SendLocalListRequest.js';
 export type { SendLocalListResponse } from './types/SendLocalListResponse.js';
 export type { SetChargingProfileRequest } from './types/SetChargingProfileRequest.js';
 export type { SetChargingProfileResponse } from './types/SetChargingProfileResponse.js';
+export type { SecurityEventNotificationRequest } from './types/SecurityEventNotificationRequest.js';
+export type { SecurityEventNotificationResponse } from './types/SecurityEventNotificationResponse.js';
 export type { SignedFirmwareStatusNotificationRequest } from './types/SignedFirmwareStatusNotificationRequest.js';
 export type { SignedFirmwareStatusNotificationResponse } from './types/SignedFirmwareStatusNotificationResponse.js';
 export type { SignedUpdateFirmwareRequest } from './types/SignedUpdateFirmwareRequest.js';

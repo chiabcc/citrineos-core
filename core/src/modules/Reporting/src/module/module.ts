@@ -428,6 +428,34 @@ export class ReportingModule extends AbstractModule {
    * OCPP 1.6 Handlers
    */
 
+  /**
+   * OCPP 1.6 Security Whitepaper ed.3 — the same event the 2.x handler above
+   * stores, arriving from a 1.6 station. Stations send these unprompted (a boot
+   * produces StartupOfTheDevice; a technician connecting over Bluetooth to set
+   * the clock produces SettingSystemTime), so refusing them meant answering a
+   * correct notification with a CallError on every boot.
+   *
+   * Shares the 2.x repository deliberately: SecurityEvents has no
+   * version-specific column, and an audit trail split by protocol would have to
+   * be re-joined by every reader.
+   */
+  @AsHandler([OCPPVersion.OCPP1_6], OCPP_CallAction.SecurityEventNotification)
+  protected async _handleOcpp16SecurityEventNotification(
+    message: IMessage<OCPP1_6.SecurityEventNotificationRequest>,
+    props?: HandlerProperties,
+  ): Promise<void> {
+    this._logger.debug('OCPP 1.6 SecurityEventNotification received:', message, props);
+
+    await this._securityEventRepository.createByStationId(
+      message.context.tenantId,
+      message.payload,
+      message.context.stationId,
+    );
+
+    const response: OCPP1_6.SecurityEventNotificationResponse = {};
+    await this.sendCallResultWithMessage(message, response);
+  }
+
   @AsHandler([OCPPVersion.OCPP1_6], OCPP_CallAction.DiagnosticsStatusNotification)
   protected async _handleDiagnosticsStatusNotification(
     message: IMessage<OCPP1_6.DiagnosticsStatusNotificationRequest>,

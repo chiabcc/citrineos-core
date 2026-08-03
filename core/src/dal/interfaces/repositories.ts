@@ -275,10 +275,22 @@ export interface ILocationRepository extends CrudRepository<Location> {
   ): Promise<void>;
 }
 
+/**
+ * What a security event carries, in either protocol family. 1.6's Security
+ * Whitepaper and 2.x's core message define the same three fields, and the table
+ * has no version-specific columns — so one shape serves both rather than the
+ * repository being tied to the 2.x request type.
+ */
+export interface SecurityEventInput {
+  type: string;
+  timestamp: string;
+  techInfo?: string | null;
+}
+
 export interface ISecurityEventRepository extends CrudRepository<SecurityEvent> {
   createByStationId: (
     tenantId: number,
-    value: OCPP2_request_types.SecurityEventNotificationRequest,
+    value: SecurityEventInput,
     stationId: string,
   ) => Promise<SecurityEvent>;
   readByStationIdAndTimestamps: (

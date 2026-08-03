@@ -302,6 +302,11 @@ const OCPP_CallActions = new Set<string>([
   OCPP_CallAction.GetDiagnostics,
   OCPP_CallAction.RemoteStartTransaction,
   OCPP_CallAction.RemoteStopTransaction,
+  // Security Whitepaper ed.3 — an optional 1.6 extension, but stations send it
+  // unprompted (observed on ABB Terra AC and EVerest, on every boot). Leaving it
+  // out of this set means the frame is refused before any handler sees it, and
+  // the station gets a CallError for doing something correct.
+  OCPP_CallAction.SecurityEventNotification,
   OCPP_CallAction.StartTransaction,
   OCPP_CallAction.StopTransaction,
 ]);
