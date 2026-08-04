@@ -199,26 +199,20 @@ export function createDockerConfig() {
       },
       networkConnection: {
         websocketServers: [
-          {
-            id: '0',
-            securityProfile: 0,
-            // Provision-first, on every port (ADR 010). Auto-registering an
-            // unknown station creates a row with NO topology, which then fails
-            // every StatusNotification it sends (Connector.evseId cannot be
-            // null) — and this fork's populate_station_pk_id trigger already
-            // makes the first BootNotification of an unknown station throw, so
-            // auto-registration never actually worked here. Closing it stops
-            // junk rows instead of leaving a door that only half opens.
-            allowUnknownChargingStations: false,
-            pingInterval: 60,
-            host: '0.0.0.0',
-            port: 8081,
-            protocols: OCPP_VERSION_LIST,
-            tenantId: DEFAULT_TENANT_ID,
-            dynamicTenantResolution: false,
-            //Uncomment to debug or use a specific port
-            //forceProtocol: OCPPVersion.OCPP2_0_1
-          },
+          // No securityProfile 0 listener. Upstream ships one on 8081, where
+          // CitrineOS discards the Authorization header outright: any station
+          // already provisioned connects with no credentials at all, so the
+          // password the wizard hands an owner decides nothing. It also made
+          // every test run on it prove less than it appeared to — the bug that
+          // stopped real chargers authenticating (ADR 024) survived weeks of
+          // green suites for exactly that reason.
+          //
+          // Provision-first stays on every remaining port (ADR 010). Registering
+          // an unknown station creates a row with NO topology, which then fails
+          // every StatusNotification it sends (Connector.evseId cannot be null),
+          // and this fork's populate_station_pk_id trigger already makes the
+          // first BootNotification of an unknown station throw — so
+          // auto-registration never worked here anyway.
           {
             id: '1',
             securityProfile: 1,
