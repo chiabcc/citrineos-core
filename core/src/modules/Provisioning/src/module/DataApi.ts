@@ -87,6 +87,23 @@ const ListChangeConfigurationsQuerySchema = QuerySchema('ListChangeConfiguration
   { key: 'key', type: 'string' },
 ]);
 
+interface UpdateChargingStationTopologyRequest {
+  stationId: string;
+  /** Full desired topology — same shape the create takes. The endpoint diffs it
+   *  against what exists rather than replacing blindly. */
+  evses: CreateEvseInput[];
+}
+
+const UpdateChargingStationTopologyRequestSchema = {
+  $id: 'UpdateChargingStationTopologyRequestSchema',
+  type: 'object',
+  properties: {
+    stationId: { type: 'string' },
+    evses: { type: 'array' },
+  },
+  required: ['stationId', 'evses'],
+} as const;
+
 // stationId is required here, unlike the GET: an omitted filter listing every
 // station is harmless, an omitted filter deleting every station is not.
 const DeleteChargingStationQuerySchema = QuerySchema('DeleteChargingStationQuerySchema', [
@@ -277,6 +294,186 @@ export class ProvisioningDataApi
     } catch (error) {
       this._logger.error(`Failed provisioning charging station ${stationId}`, error);
       return { success: false, payload: `Failed provisioning charging station ${stationId}` };
+    }
+  }
+
+  /**
+   * Correct a station's topology after onboarding (changcharge ADR: topology
+   * edit). The wizard asks once and reality changes anyway — a mis-counted
+   * connector, a hardware swap under the same station id, firmware that
+   * renumbers.
+   *
+   * Diff semantics, in one transaction:
+   *   - a connectorId in the request but not the DB is created
+   *   - one in both is updated in place (type / powerType / max power / EVSE grouping)
+   *   - one only in the DB is removed — but ONLY if no transaction ever ran on
+   *     it. Removing recorded history is what DELETE ../chargingStation?force
+   *     is for; an edit endpoint must never do it as a side effect.
+   *
+   * Status rows for a removed connector (StatusNotifications and the latest
+   * pointer) go with it; they describe hardware the owner says does not exist.
+   */
+  @AsDataEndpoint(
+    Namespace.ChargingStation,
+    HttpMethod.Put,
+    ProvisioningTenantQuerySchema,
+    UpdateChargingStationTopologyRequestSchema,
+  )
+  async updateChargingStationTopology(
+    request: FastifyRequest<{
+      Body: UpdateChargingStationTopologyRequest;
+      Querystring: TenantQuerystring;
+    }>,
+  ): Promise<IMessageConfirmation> {
+    const tenantId = request.query.tenantId;
+    const { stationId, evses: evseInput } = request.body;
+
+    if (!evseInput?.length) {
+      return { success: false, payload: 'evses must not be empty' };
+    }
+
+    const station = await ChargingStation.findOne({ where: { id: stationId, tenantId } });
+    if (!station) {
+      return { success: false, payload: `Charging station ${stationId} not found` };
+    }
+
+    const plan = planTopology({ evses: evseInput });
+
+    try {
+      const result = await ChargingStation.sequelize!.transaction(async (transaction) => {
+        const existing = await Connector.findAll({
+          where: { stationId, tenantId },
+          transaction,
+        });
+        const wanted = new Map(plan.map((row) => [row.connectorId, row]));
+        const present = new Map(existing.map((c) => [c.connectorId, c]));
+
+        // Removals first, and only of connectors no transaction ever used —
+        // checked per connector, not per station, so adding a second connector
+        // to a station with history still works.
+        const removed: number[] = [];
+        for (const conn of existing) {
+          if (wanted.has(conn.connectorId)) continue;
+          // Transactions FK the connector row's database id (not the OCPP
+          // number) in their own "connectorId" column.
+          const [{ count }] = (await ChargingStation.sequelize!.query(
+            `SELECT count(*)::int AS count FROM "Transactions"
+              WHERE "stationId" = :stationId AND "connectorId" = :dbId`,
+            {
+              replacements: { stationId, dbId: conn.id },
+              type: QueryTypes.SELECT,
+              transaction,
+            },
+          )) as { count: number }[];
+          if (count > 0) {
+            throw new Error(
+              `connector ${conn.connectorId} has ${count} transaction(s); refusing to remove it — history removal is DELETE's job`,
+            );
+          }
+          // Status rows key on the OCPP connector NUMBER (unlike Transactions,
+          // which FK the row's database id). The latest-pointer table has no
+          // connector column at all — it references StatusNotifications rows —
+          // so clear the pointers first, then the log they point into.
+          await ChargingStation.sequelize!.query(
+            `DELETE FROM "LatestStatusNotifications"
+              WHERE "stationId" = :stationId
+                AND "statusNotificationId" IN (
+                  SELECT id FROM "StatusNotifications"
+                   WHERE "stationId" = :stationId AND "connectorId" = :connectorNo)`,
+            { replacements: { stationId, connectorNo: conn.connectorId }, transaction },
+          );
+          await ChargingStation.sequelize!.query(
+            `DELETE FROM "StatusNotifications" WHERE "stationId" = :stationId AND "connectorId" = :connectorNo`,
+            { replacements: { stationId, connectorNo: conn.connectorId }, transaction },
+          );
+          await conn.destroy({ transaction });
+          removed.push(conn.connectorId);
+        }
+
+        // EVSE rows for the target shape — create the missing ones.
+        const evseRows = new Map<number, Evse>();
+        for (const row of plan) {
+          if (evseRows.has(row.evseNo)) continue;
+          const [evse] = await Evse.findOrCreate({
+            where: { stationId, tenantId, evseTypeId: row.evseNo },
+            defaults: {
+              tenantId,
+              stationId,
+              stationPkId: station.pkId,
+              evseTypeId: row.evseNo,
+              evseId: `${stationId}-${row.evseNo}`,
+            },
+            transaction,
+          });
+          evseRows.set(row.evseNo, evse);
+        }
+
+        const added: number[] = [];
+        const updated: number[] = [];
+        for (const row of plan) {
+          const evse = evseRows.get(row.evseNo)!;
+          const current = present.get(row.connectorId);
+          if (!current) {
+            await Connector.create(
+              {
+                tenantId,
+                stationId,
+                connectorId: row.connectorId,
+                evseId: evse.id,
+                evseTypeConnectorId: row.evseConnectorId,
+                status: 'Unknown',
+                type: row.connector.type,
+                powerType: row.connector.powerType,
+                maximumPowerWatts: row.connector.maxPowerW,
+              },
+              { transaction },
+            );
+            added.push(row.connectorId);
+          } else {
+            await current.update(
+              {
+                evseId: evse.id,
+                evseTypeConnectorId: row.evseConnectorId,
+                type: row.connector.type,
+                powerType: row.connector.powerType,
+                maximumPowerWatts: row.connector.maxPowerW,
+              },
+              { transaction },
+            );
+            updated.push(row.connectorId);
+          }
+        }
+
+        // EVSEs that no connector points at anymore are hardware the owner
+        // says is gone too.
+        const keptEvseNos = new Set(plan.map((r) => r.evseNo));
+        const allEvses = await Evse.findAll({ where: { stationId, tenantId }, transaction });
+        const removedEvses: number[] = [];
+        for (const evse of allEvses) {
+          const evseNo = evse.evseTypeId;
+          // An EVSE without a number was not created by our topology flow —
+          // leave it alone rather than guess whether it is still wanted.
+          if (evseNo === undefined || keptEvseNos.has(evseNo)) continue;
+          const stillUsed = await Connector.count({ where: { evseId: evse.id }, transaction });
+          if (stillUsed === 0) {
+            await evse.destroy({ transaction });
+            removedEvses.push(evseNo);
+          }
+        }
+
+        return { added, updated, removed, removedEvses };
+      });
+
+      this._logger.info(
+        `Updated topology of ${stationId} (tenant ${tenantId}): +${result.added.length} ~${result.updated.length} -${result.removed.length}`,
+      );
+      return { success: true, payload: { stationId, ...result } };
+    } catch (error) {
+      this._logger.error(`Failed updating topology of ${stationId}`, error);
+      return {
+        success: false,
+        payload: error instanceof Error ? error.message : `Failed updating topology of ${stationId}`,
+      };
     }
   }
 
